@@ -38,8 +38,11 @@ export function RoomPage() {
   const { roomCode: routeRoomCode } = useParams();
   const navigate = useNavigate();
   const { socket, status: connectionStatus, ensureConnected } = useSocket();
-  const [displayName, setDisplayName] = useState(getStoredDisplayName);
+  const storedDisplayName = useMemo(() => getStoredDisplayName(), []);
+  const [displayName, setDisplayName] = useState(storedDisplayName);
   const [displayNameError, setDisplayNameError] = useState<string | null>(null);
+  const [needsDisplayNameConfirmation, setNeedsDisplayNameConfirmation] =
+    useState(() => !displayNameSchema.safeParse(storedDisplayName).success);
   const [room, setRoom] = useState<PublicRoomState | null>(null);
   const [pageStatus, setPageStatus] = useState<RoomPageStatus>("joining");
   const [pageMessage, setPageMessage] = useState<string | null>(null);
@@ -80,6 +83,7 @@ export function RoomPage() {
 
       const parsedName = displayNameSchema.safeParse(name);
       if (!parsedName.success) {
+        setNeedsDisplayNameConfirmation(true);
         setDisplayNameError(
           parsedName.error.issues[0]?.message ?? "Enter a display name."
         );
@@ -113,6 +117,7 @@ export function RoomPage() {
         }
 
         joinedRef.current = true;
+        setNeedsDisplayNameConfirmation(false);
         applyRoomState(result.data.state);
       } catch {
         joinedRef.current = false;
@@ -124,14 +129,21 @@ export function RoomPage() {
   );
 
   useEffect(() => {
-    if (roomCode === null || !displayNameSchema.safeParse(displayName).success) {
+    if (
+      roomCode === null ||
+      needsDisplayNameConfirmation ||
+      joinedRef.current
+    ) {
       return;
     }
 
-    if (!joinedRef.current) {
-      void joinCurrentRoom(displayName);
-    }
-  }, [displayName, joinCurrentRoom, roomCode]);
+    void joinCurrentRoom(displayName);
+  }, [
+    displayName,
+    joinCurrentRoom,
+    needsDisplayNameConfirmation,
+    roomCode
+  ]);
 
   useEffect(() => {
     const handleState = (nextRoom: PublicRoomState) => applyRoomState(nextRoom);
@@ -283,7 +295,7 @@ export function RoomPage() {
     );
   }
 
-  if (!displayNameSchema.safeParse(displayName).success && !joinedRef.current) {
+  if (needsDisplayNameConfirmation && !joinedRef.current) {
     return (
       <main className="min-h-screen bg-slate-50 px-4 py-8">
         <section className="mx-auto grid max-w-md gap-5 rounded-md border border-slate-200 bg-white p-5 shadow-panel">
